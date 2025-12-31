@@ -4,7 +4,7 @@ import os
 from atproto import Client, models
 
 # === CONFIG ===
-RSS_URL = "http://feeds.bbci.co.uk/news/technology/rss.xml"
+RSS_URL = "http://feeds.bbci.co.uk/news/world/rss.xml"
 STATE_FILE = "posted.json"
 
 # === LOGIN ===
