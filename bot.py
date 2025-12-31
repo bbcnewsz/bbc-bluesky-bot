@@ -14,8 +14,8 @@ FEEDS = {
 }
 
 STATE_FILE = "posted.json"
-HASHTAGS = "#BBC #NEWS"
-BRANDING = "BBC News"
+HASHTAGS = "#BBCNews #RSSBot"
+BRANDING = "📰 BBC News (Unofficial)"
 
 # === LOGIN ===
 client = Client()
@@ -44,7 +44,7 @@ def clean_bbc_url(url):
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
 def format_text(title, feed_name, clean_url):
-    return f"📰 {title}\n{BRANDING}\n{HASHTAGS}"
+    return f"📰 {title}\n{BRANDING}\n{HASHTAGS}\nRead more: {clean_url}"
 
 # === MAIN LOOP ===
 for feed_name, rss_url in FEEDS.items():
