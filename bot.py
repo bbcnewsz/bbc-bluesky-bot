@@ -14,8 +14,6 @@ FEEDS = {
 }
 
 STATE_FILE = "posted.json"
-HASHTAGS = "#BBCNews"
-BRANDING = "BBC"
 
 # === LOGIN ===
 client = Client()
@@ -43,8 +41,13 @@ def clean_bbc_url(url):
     parsed = urlparse(url)
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
-def format_text(title, feed_name, clean_url):
-    return f"📰 {title}\n{BRANDING}\n{HASHTAGS}\nRead more: {clean_url}"
+def format_text(title, summary, clean_url):
+    """Return post text with headline, summary, and link."""
+    text = title.strip()
+    if summary:
+        text += "\n\n" + summary.strip()
+    text += "\n\nRead more: " + clean_url
+    return text
 
 # === MAIN LOOP ===
 for feed_name, rss_url in FEEDS.items():
@@ -55,6 +58,7 @@ for feed_name, rss_url in FEEDS.items():
             continue
 
         clean_url = clean_bbc_url(entry.link)
+        summary = entry.summary if hasattr(entry, "summary") else ""
         image_url = get_og_image(entry.link)
         embed = None
 
@@ -71,7 +75,7 @@ for feed_name, rss_url in FEEDS.items():
 
         # Post to Bluesky
         client.send_post(
-            text=format_text(entry.title, feed_name, clean_url),
+            text=format_text(entry.title, summary, clean_url),
             embed=embed
         )
 
