@@ -5,8 +5,6 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urlunparse
 from atproto import Client, models
-from PIL import Image
-from io import BytesIO
 
 # === CONFIG ===
 FEEDS = {
@@ -43,38 +41,11 @@ def clean_bbc_url(url):
     parsed = urlparse(url)
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
-def format_text(title, summary, clean_url):
+def format_text(title, summary):
     text = title.strip()
     if summary:
         text += "\n\n" + summary.strip()
-    text += "\n\nRead more: " + clean_url
     return text
-
-def process_image(image_url, target_ratio=4/3):
-    # Fetch image
-    img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}).content
-    img = Image.open(BytesIO(img_data))
-
-    # Crop to target ratio (4:3)
-    width, height = img.size
-    current_ratio = width / height
-
-    if current_ratio > target_ratio:
-        # Too wide → crop sides
-        new_width = int(height * target_ratio)
-        left = (width - new_width) // 2
-        img = img.crop((left, 0, left + new_width, height))
-    elif current_ratio < target_ratio:
-        # Too tall → crop top/bottom
-        new_height = int(width / target_ratio)
-        top = (height - new_height) // 2
-        img = img.crop((0, top, width, top + new_height))
-
-    # Save to bytes
-    output = BytesIO()
-    img.save(output, format="JPEG")
-    output.seek(0)
-    return output.read()
 
 # === MAIN LOOP ===
 for feed_name, rss_url in FEEDS.items():
@@ -86,23 +57,34 @@ for feed_name, rss_url in FEEDS.items():
 
         clean_url = clean_bbc_url(entry.link)
         summary = entry.summary if hasattr(entry, "summary") else ""
-        image_url = get_og_image(entry.link)
-        embed = None
+        text_content = format_text(entry.title, summary)
 
+        # Prepare image embed if available
+        image_url = get_og_image(entry.link)
+        image_embed = None
         if image_url:
-            processed_image = process_image(image_url)
-            blob = client.upload_blob(processed_image)
-            embed = models.AppBskyEmbedImages.Main(
+            img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}).content
+            blob = client.upload_blob(img_data)
+            image_embed = models.AppBskyEmbedImages.Main(
                 images=[models.AppBskyEmbedImages.Image(
                     image=blob.blob,
                     alt=entry.title
                 )]
             )
 
+        # Prepare external link embed (clickable)
+        external_embed = models.AppBskyEmbedExternal.Main(
+            external=models.AppBskyEmbedExternal.External(
+                uri=clean_url,
+                title=entry.title,
+                description=summary if summary else "BBC News"
+            )
+        )
+
         # Post to Bluesky
         client.send_post(
-            text=format_text(entry.title, summary, clean_url),
-            embed=embed
+            text=text_content,
+            embed=image_embed if image_embed else external_embed
         )
 
         # Mark as posted
