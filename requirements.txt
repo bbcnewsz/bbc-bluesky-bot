@@ -1,2 +1,4 @@
 feedparser
 atproto
+requests
+beautifulsoup4
