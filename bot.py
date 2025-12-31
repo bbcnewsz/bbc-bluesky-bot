@@ -14,7 +14,8 @@ FEEDS = {
 }
 
 STATE_FILE = "posted.json"
-HASHTAGS = "#BBC #NEWS
+HASHTAGS = 
+"#BBC #NEWS"
 BRANDING = "BBC News"
 
 # === LOGIN ===
