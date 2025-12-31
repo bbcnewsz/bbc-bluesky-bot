@@ -7,8 +7,15 @@ from urllib.parse import urlparse, urlunparse
 from atproto import Client, models
 
 # === CONFIG ===
-RSS_URL = "http://feeds.bbci.co.uk/news/world/rss.xml"
+FEEDS = {
+    "World": "http://feeds.bbci.co.uk/news/world/rss.xml",
+    "UK": "http://feeds.bbci.co.uk/news/uk/rss.xml",
+    "Technology": "http://feeds.bbci.co.uk/news/technology/rss.xml"
+}
+
 STATE_FILE = "posted.json"
+HASHTAGS = "#BBCNews #RSSBot"
+BRANDING = "📰 BBC News (Unofficial)"
 
 # === LOGIN ===
 client = Client()
@@ -17,10 +24,7 @@ client.login(
     os.environ["BLUESKY_PASSWORD"]
 )
 
-# === LOAD FEED ===
-feed = feedparser.parse(RSS_URL)
-
-# === LOAD POSTED STATE ===
+# === LOAD STATE ===
 if os.path.exists(STATE_FILE):
     with open(STATE_FILE, "r") as f:
         posted = json.load(f)
@@ -29,7 +33,6 @@ else:
 
 # === HELPERS ===
 def get_og_image(url):
-    """Fetch the og:image from a BBC article."""
     headers = {"User-Agent": "Mozilla/5.0"}
     r = requests.get(url, headers=headers, timeout=10)
     soup = BeautifulSoup(r.text, "html.parser")
@@ -37,39 +40,44 @@ def get_og_image(url):
     return tag["content"] if tag else None
 
 def clean_bbc_url(url):
-    """Remove RSS tracking parameters from BBC URL."""
     parsed = urlparse(url)
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
-# === POST FIRST NEW ARTICLE ===
-for entry in feed.entries:
-    if entry.link in posted:
-        continue
+def format_text(title, feed_name, clean_url):
+    return f"📰 {title}\n{BRANDING}\n{HASHTAGS}"
 
-    clean_url = clean_bbc_url(entry.link)
-    image_url = get_og_image(entry.link)
-    embed = None
+# === MAIN LOOP ===
+for feed_name, rss_url in FEEDS.items():
+    feed = feedparser.parse(rss_url)
 
-    # If an image exists, upload it
-    if image_url:
-        img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}).content
-        blob = client.upload_blob(img_data)
-        embed = models.AppBskyEmbedImages.Main(
-            images=[models.AppBskyEmbedImages.Image(
-                image=blob.blob,
-                alt=entry.title
-            )]
+    for entry in feed.entries:
+        if entry.link in posted:
+            continue
+
+        clean_url = clean_bbc_url(entry.link)
+        image_url = get_og_image(entry.link)
+        embed = None
+
+        # Upload image if available
+        if image_url:
+            img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}).content
+            blob = client.upload_blob(img_data)
+            embed = models.AppBskyEmbedImages.Main(
+                images=[models.AppBskyEmbedImages.Image(
+                    image=blob.blob,
+                    alt=entry.title
+                )]
+            )
+
+        # Post to Bluesky
+        client.send_post(
+            text=format_text(entry.title, feed_name, clean_url),
+            embed=embed
         )
 
-    # Post headline + optional image
-    client.send_post(
-        text=entry.title,
-        embed=embed
-    )
-
-    # Mark as posted
-    posted.append(entry.link)
-    break  # Only post one new article per run
+        # Mark as posted
+        posted.append(entry.link)
+        break  # Only one article per feed per run
 
 # === SAVE STATE ===
 with open(STATE_FILE, "w") as f:
