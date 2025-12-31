@@ -5,6 +5,8 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urlunparse
 from atproto import Client, models
+from PIL import Image
+from io import BytesIO
 
 # === CONFIG ===
 FEEDS = {
@@ -42,12 +44,37 @@ def clean_bbc_url(url):
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
 def format_text(title, summary, clean_url):
-    """Return post text with headline, summary, and link."""
     text = title.strip()
     if summary:
         text += "\n\n" + summary.strip()
     text += "\n\nRead more: " + clean_url
     return text
+
+def process_image(image_url, target_ratio=4/3):
+    # Fetch image
+    img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}).content
+    img = Image.open(BytesIO(img_data))
+
+    # Crop to target ratio (4:3)
+    width, height = img.size
+    current_ratio = width / height
+
+    if current_ratio > target_ratio:
+        # Too wide → crop sides
+        new_width = int(height * target_ratio)
+        left = (width - new_width) // 2
+        img = img.crop((left, 0, left + new_width, height))
+    elif current_ratio < target_ratio:
+        # Too tall → crop top/bottom
+        new_height = int(width / target_ratio)
+        top = (height - new_height) // 2
+        img = img.crop((0, top, width, top + new_height))
+
+    # Save to bytes
+    output = BytesIO()
+    img.save(output, format="JPEG")
+    output.seek(0)
+    return output.read()
 
 # === MAIN LOOP ===
 for feed_name, rss_url in FEEDS.items():
@@ -62,10 +89,9 @@ for feed_name, rss_url in FEEDS.items():
         image_url = get_og_image(entry.link)
         embed = None
 
-        # Upload image if available
         if image_url:
-            img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}).content
-            blob = client.upload_blob(img_data)
+            processed_image = process_image(image_url)
+            blob = client.upload_blob(processed_image)
             embed = models.AppBskyEmbedImages.Main(
                 images=[models.AppBskyEmbedImages.Image(
                     image=blob.blob,
