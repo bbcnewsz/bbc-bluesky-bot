@@ -14,8 +14,8 @@ FEEDS = {
 }
 
 STATE_FILE = "posted.json"
-HASHTAGS = "#BBCNews #RSSBot"
-BRANDING = "📰 BBC News (Unofficial)"
+HASHTAGS = "#BBC #NEWS
+BRANDING = "BBC News"
 
 # === LOGIN ===
 client = Client()
