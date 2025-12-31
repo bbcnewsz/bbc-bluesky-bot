@@ -1,47 +1,61 @@
 import feedparser
 import json
 import os
+import requests
+from bs4 import BeautifulSoup
 from atproto import Client, models
 
-# === CONFIG ===
 RSS_URL = "http://feeds.bbci.co.uk/news/world/rss.xml"
 STATE_FILE = "posted.json"
 
-# === LOGIN ===
 client = Client()
 client.login(
     os.environ["BLUESKY_HANDLE"],
     os.environ["BLUESKY_PASSWORD"]
 )
 
-# === LOAD FEED ===
 feed = feedparser.parse(RSS_URL)
 
-# === LOAD POSTED STATE ===
 if os.path.exists(STATE_FILE):
-    with open(STATE_FILE, "r") as f:
-        posted_links = json.load(f)
+    posted = json.load(open(STATE_FILE))
 else:
-    posted_links = []
+    posted = []
 
-# === POST FIRST NEW ARTICLE ===
+def get_og_image(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+    r = requests.get(url, headers=headers, timeout=10)
+    soup = BeautifulSoup(r.text, "html.parser")
+    tag = soup.find("meta", property="og:image")
+    return tag["content"] if tag else None
+
 for entry in feed.entries:
-    if entry.link not in posted_links:
-        text = entry.title
+    if entry.link in posted:
+        continue
 
-        embed = models.AppBskyEmbedExternal.Main(
-            external=models.AppBskyEmbedExternal.External(
-                uri=entry.link,
-                title=entry.title,
-                description="BBC News"
-            )
+    image_url = get_og_image(entry.link)
+    embed = None
+
+    if image_url:
+        img = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}).content
+        blob = client.upload_blob(img)
+
+        embed = models.AppBskyEmbedImages.Main(
+            images=[
+                models.AppBskyEmbedImages.Image(
+                    image=blob.blob,
+                    alt=entry.title
+                )
+            ]
         )
 
-        client.send_post(text=text, embed=embed)
+    client.send_post(
+        text=f"{entry.title}\n{entry.link}",
+        embed=embed
+    )
 
-        posted_links.append(entry.link)
-        break
+    posted.append(entry.link)
+    break
 
-# === SAVE STATE ===
-with open(STATE_FILE, "w") as f:
-    json.dump(posted_links, f)
+json.dump(posted, open(STATE_FILE, "w"))
