@@ -22,8 +22,19 @@ else:
 
 for entry in feed.entries:
     if entry.link not in posted:
-        text = f"{entry.title}\n{entry.link}"
-        client.send_post(text)
+        text = entry.title
+
+client.send_post(
+    text=text,
+    embed={
+        "$type": "app.bsky.embed.external",
+        "external": {
+            "uri": entry.link,
+            "title": entry.title,
+            "description": "BBC News"
+        }
+    }
+)
         posted.append(entry.link)
         break
 
