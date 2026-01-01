@@ -32,10 +32,13 @@ else:
 # === HELPERS ===
 def get_og_image(url):
     headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers, timeout=10)
-    soup = BeautifulSoup(r.text, "html.parser")
-    tag = soup.find("meta", property="og:image")
-    return tag["content"] if tag else None
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
+        tag = soup.find("meta", property="og:image")
+        return tag["content"] if tag else None
+    except:
+        return None
 
 def clean_bbc_url(url):
     parsed = urlparse(url)
@@ -48,7 +51,6 @@ def format_text(title, summary):
     return text
 
 # === MAIN LOOP ===
-for feed_name, rss_url in FEEDS.items():
 for feed_name, rss_url in FEEDS.items():
     feed = feedparser.parse(rss_url)
 
@@ -68,9 +70,9 @@ for feed_name, rss_url in FEEDS.items():
             summary = entry.summary if hasattr(entry, "summary") else ""
             text_content = format_text(entry.title, summary)
 
-            # Get OG image safely
-            image_url = get_og_image(entry.link)
+            # Try image embed
             image_embed = None
+            image_url = get_og_image(entry.link)
             if image_url:
                 try:
                     img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10).content
@@ -82,7 +84,7 @@ for feed_name, rss_url in FEEDS.items():
                         )]
                     )
                 except Exception as e:
-                    print(f"Failed to fetch or upload image for {clean_url}: {e}")
+                    print(f"Failed to fetch/upload image for {clean_url}: {e}")
                     image_embed = None
 
             # External embed for clickable link if no image
@@ -94,53 +96,19 @@ for feed_name, rss_url in FEEDS.items():
                 )
             )
 
-            # Post to Bluesky
+            # Send post
             client.send_post(
                 text=text_content,
                 embed=image_embed if image_embed else external_embed
             )
 
-            # Update posted.json
+            # Mark as posted
             posted.append(clean_url)
-            break  # Only one article per feed per run
+            break  # only one article per feed per run
 
         except Exception as e:
             print(f"Error processing article {entry.link}: {e}")
             continue
-        summary = entry.summary if hasattr(entry, "summary") else ""
-        text_content = format_text(entry.title, summary)
-
-        # Prepare image embed if available
-        image_url = get_og_image(entry.link)
-        image_embed = None
-        if image_url:
-            img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}).content
-            blob = client.upload_blob(img_data)
-            image_embed = models.AppBskyEmbedImages.Main(
-                images=[models.AppBskyEmbedImages.Image(
-                    image=blob.blob,
-                    alt=entry.title
-                )]
-            )
-
-        # Prepare external link embed (clickable)
-        external_embed = models.AppBskyEmbedExternal.Main(
-            external=models.AppBskyEmbedExternal.External(
-                uri=clean_url,
-                title=entry.title,
-                description=summary if summary else "BBC News"
-            )
-        )
-
-        # Post to Bluesky
-        client.send_post(
-            text=text_content,
-            embed=image_embed if image_embed else external_embed
-        )
-
-        # Mark as posted
-        posted.append(clean_url)
-        break  # Only one article per feed per run
 
 # === SAVE STATE ===
 with open(STATE_FILE, "w") as f:
