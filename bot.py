@@ -49,13 +49,64 @@ def format_text(title, summary):
 
 # === MAIN LOOP ===
 for feed_name, rss_url in FEEDS.items():
+for feed_name, rss_url in FEEDS.items():
     feed = feedparser.parse(rss_url)
 
-    for entry in feed.entries:
-    clean_url = clean_bbc_url(entry.link)
-
-    if clean_url in posted:
+    # Skip empty feeds safely
+    if not hasattr(feed, "entries") or len(feed.entries) == 0:
+        print(f"No articles found in {feed_name} feed, skipping.")
         continue
+
+    for entry in feed.entries:
+        try:
+            clean_url = clean_bbc_url(entry.link)
+
+            # Skip duplicates
+            if clean_url in posted:
+                continue
+
+            summary = entry.summary if hasattr(entry, "summary") else ""
+            text_content = format_text(entry.title, summary)
+
+            # Get OG image safely
+            image_url = get_og_image(entry.link)
+            image_embed = None
+            if image_url:
+                try:
+                    img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10).content
+                    blob = client.upload_blob(img_data)
+                    image_embed = models.AppBskyEmbedImages.Main(
+                        images=[models.AppBskyEmbedImages.Image(
+                            image=blob.blob,
+                            alt=entry.title
+                        )]
+                    )
+                except Exception as e:
+                    print(f"Failed to fetch or upload image for {clean_url}: {e}")
+                    image_embed = None
+
+            # External embed for clickable link if no image
+            external_embed = models.AppBskyEmbedExternal.Main(
+                external=models.AppBskyEmbedExternal.External(
+                    uri=clean_url,
+                    title=entry.title,
+                    description=summary if summary else "BBC News"
+                )
+            )
+
+            # Post to Bluesky
+            client.send_post(
+                text=text_content,
+                embed=image_embed if image_embed else external_embed
+            )
+
+            # Update posted.json
+            posted.append(clean_url)
+            break  # Only one article per feed per run
+
+        except Exception as e:
+            print(f"Error processing article {entry.link}: {e}")
+            continue
         summary = entry.summary if hasattr(entry, "summary") else ""
         text_content = format_text(entry.title, summary)
 
