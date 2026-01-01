@@ -88,7 +88,7 @@ for feed_name, rss_url in FEEDS.items():
         )
 
         # Mark as posted
-        posted.append(entry.link)
+        posted.append(clean_url)
         break  # Only one article per feed per run
 
 # === SAVE STATE ===
