@@ -52,10 +52,10 @@ for feed_name, rss_url in FEEDS.items():
     feed = feedparser.parse(rss_url)
 
     for entry in feed.entries:
-        if entry.link in posted:
-            continue
+    clean_url = clean_bbc_url(entry.link)
 
-        clean_url = clean_bbc_url(entry.link)
+    if clean_url in posted:
+        continue
         summary = entry.summary if hasattr(entry, "summary") else ""
         text_content = format_text(entry.title, summary)
 
